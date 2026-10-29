@@ -51,7 +51,7 @@ A3: Explore and check the data:
 - What would happen if the business intervened: the data only shows outcomes with no action taken, so a campaign's effect has to be measured with an experiment.
 - Returns and refunds are not in the dataset.
 
-- ## Part B - Model
+## Part B - Model
 
 ### Model choice
 Logistic regression, because the main drivers are simple, the coefficients can be explained in plain terms, and the scores can be read as probabilities for estimating impact. It uses the numeric features plus customer state and product category. Before fitting:
@@ -74,6 +74,22 @@ The campaign will only contact the riskiest orders, so the main metric is precis
 - **Calibration:** predictions match reality in training (13.9% predicted vs 13.9% actual) but run high in the calmer test period (14.5% vs 10.7%). The ranking still holds in every decile, with the actual rate rising from 5.5% to 28.8%, so the scores are used to choose whom to contact, while impact estimates use the actual rates.
 - **Not used:** accuracy, because 89% of orders get no bad review, so predicting "no bad review" for every order would score 89% while finding none.
 
+### B2. Explanation
+
+**What drives the predictions** (percentage change in the odds of a bad review for a one standard deviation increase in each feature, from an unregularised refit with p-values):
+- **Slow handover by the seller** raises the risk most: odds up 24% (p < 0.001). Dispatching after the shipping deadline adds to this.
+- **Bigger baskets:** more items (up 21%) and more sellers in the order (up 17%).
+- **A seller's history of bad reviews:** up 19%.
+- **Higher price and freight cost** raise the risk slightly (up 5% and 3%).
+- **Same-state shipping** lowers the risk by 21%, and **a longer delivery promise** by 8%.
+- **Not significant once the others are known:** the seller's past late rate (p = 0.59), a missing product listing (p = 0.11) and the number of product photos (p = 0.05). What the seller does on this order matters more than their history of lateness.
+- **Category and region** also matter (for example audio is riskier, books and food safer), but these can't be changed by the business.
+
+
+**What the business can control:** how fast sellers dispatch, and which sellers have a poor review history. These point to dispatch alerts and seller monitoring alongside the customer campaign.
+
+**What the business can control:** how fast sellers dispatch, and which sellers have a poor review history. These point to dispatch alerts and seller monitoring alongside the customer campaign.
+
 **Where the model is weak**
 - It can't see causes after handover or not recorded (product quality, damage, the last mile). Even with perfect knowledge of late delivery, top-10% precision would only reach about 39%.
 - It over-predicts in calmer periods, so probabilities need recalibrating before they are used to estimate volumes.
@@ -88,6 +104,34 @@ The campaign will only contact the riskiest orders, so the main metric is precis
 - Leakage test: adding the actual late delivery flag, only known after handover, lifts AUC from 0.67 to 0.72. The model deliberately leaves it out.
 
 
+## Part C - Recommend and test
 
+### C1. The recommendation
+**Target segment:** each week, score every order when the seller hands it to the carrier and select the riskiest 10% by model score. At recent volumes this is about 650 orders a month, of which 28.8% would otherwise get a bad review (about 188 a month), almost three times the average rate.
+
+**Mechanic:** send these customers a proactive message before delivery (acknowledging the order and giving a direct contact if anything goes wrong), together with a $5 goodwill voucher for their next purchase. The aim is to reach the customer before they are disappointed and turn a likely 1-2 star review into a neutral or good one.
+
+**Expected impact** (assumptions: the campaign prevents 10%, 20% or 30% of bad reviews among contacted orders; every contacted order gets a $5 voucher; the message is automated and free):
+
+| Scenario | Bad reviews prevented per month | Monthly cost | Cost per bad review prevented |
+|---|---|---|---|
+| Low (10%) | ~19 | ~$3,255 | ~$174 |
+| Mid (20%) | ~38 | ~$3,255 | ~$87 |
+| High (30%) | ~56 | ~$3,255 | ~$58 |
+
+Targeted orders have a median value of $164, and in the mid case preventing a bad review costs about half the value of one order. The campaign pays off if a bad review costs the business at least that much in lost repeat purchases and weaker seller ranking. Amounts are in the dataset's currency (Brazilian reais), shown as $ for simplicity.
+
+### C2. The experiment design
+- **Groups:** orders in the riskiest 10% at handover are randomly split 50/50 into treatment (message and voucher) and control (no contact). Randomising within the eligible group means the campaign is the only systematic difference between the groups, so a difference in bad reviews can be attributed to it. Both groups run over the same weeks, so seasonal swings affect both equally.
+- **Primary metric:** bad review rate (1-2 stars) in treatment vs control.
+- **Guardrail metrics:** review response rate (fewer reviews could look like fewer bad reviews), repeat purchase within 90 days, and voucher cost per order.
+- **Sample size and duration:** to detect a 20% drop in bad reviews (from 28.8% to 23.1%) with 80% power at 5% significance, the test needs 906 orders per group (1,812 in total), about 2.8 months at 650 eligible orders a month. A 10% drop would need nearly a year, so the test is planned around a 20% effect.
+- **Decision rule:**
+  - **Roll out:** bad reviews fall significantly, the guardrails hold, and the cost per bad review prevented is below the business's estimate of what a bad review costs.
+  - **Change it:** bad reviews fall but the cost is too high, so test a message without the voucher.
+  - **Stop:** no significant difference after three months.
+
+### C3. Caveats
+The impact range rests on assumed effect sizes and costs rather than measured ones, and the model's probabilities run high in calmer periods, so the estimates use actual bad review rates and should be treated as indicative. The model predicts which orders are likely to get a bad review; it does not show that contacting them will change the outcome, since some customers will be unhappy whatever is done. Only the experiment can measure what the campaign actually causes.
 
 
